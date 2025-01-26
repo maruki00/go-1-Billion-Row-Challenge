@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"fmt"
+	"io"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,7 +14,8 @@ import (
 )
 
 const (
-	WORKERS = 10
+	WORKERS = 100
+	MAXROWS = 10000000
 )
 
 type Measure struct {
@@ -20,69 +24,74 @@ type Measure struct {
 }
 
 func main() {
-	defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
+
+	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
+	defer profile.Start(profile.TraceProfile, profile.ProfilePath(".")).Stop()
 	file, err := os.Open("./measures.txt")
 	if err != nil {
 		panic("file doesn't exist")
 	}
+
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	measureMap := make(map[string]*Measure)
-	var mapMutex sync.Mutex
-	stream := make(chan string)
+	measureMap := new(sync.Map)
+
 	wg := &sync.WaitGroup{}
+	mk := 0
 	for i := 0; i < WORKERS; i++ {
 		wg.Add(1)
-		go worker(stream, measureMap, &mapMutex, wg)
+		go worker(measureMap, mk, file, wg)
+		mk += MAXROWS
 	}
-	line := 0
-	for scanner.Scan() {
-		if line%100000000 == 0 {
-			print(line)
-		}
-		stream <- scanner.Text()
-		line++
-	}
-	close(stream)
 	wg.Wait()
+	fmt.Println(measureMap)
 	// for key, measure := range measureMap {
 	// 	measure.meanTemp = measure.sum / float64(measure.count)
 	// 	fmt.Printf("Sensor: %s, Min: %.2f, Max: %.2f, Mean: %.2f\n", key, measure.minTemp, measure.maxTemp, measure.meanTemp)
 	// }
 }
 
-func worker(linesChan <-chan string, measureMap map[string]*Measure, mapMutex *sync.Mutex, wg *sync.WaitGroup) {
+func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for line := range linesChan {
-		// Parse the line
-		parts := strings.Split(line, ";")
+	_, _ = f.Seek(int64(seekTo), 0)
+	reader := bufio.NewReader(f)
+	maxReach := MAXROWS
+	for {
+		if maxReach <= 0 {
+			break
+		}
+		line, _, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+
+		parts := strings.Split(string(line), ";")
 		if len(parts) < 2 {
 			continue
 		}
-		sensor := parts[0]
 		value, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
 			continue
 		}
-		mapMutex.Lock()
-		measure, exists := measureMap[sensor]
+		measure, exists := measureMap.Load(parts[0])
 		if !exists {
-			measure = &Measure{
+			measureMap.Store(parts[0], &Measure{
 				minTemp: value,
 				maxTemp: value,
 				sum:     value,
 				count:   1,
-			}
-			measureMap[sensor] = measure
-			mapMutex.Unlock()
+			})
 			continue
 		}
-		mapMutex.Unlock()
 
-		measure.maxTemp = max(measure.maxTemp, value)
-		measure.minTemp = min(measure.minTemp, value)
-		measure.sum += value
-		measure.count++
+		measure.(*Measure).maxTemp = max(measure.(*Measure).maxTemp, value)
+		measure.(*Measure).minTemp = min(measure.(*Measure).minTemp, value)
+		measure.(*Measure).sum += value
+		measure.(*Measure).count++
+
+		maxReach--
 	}
 }
 
