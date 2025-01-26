@@ -26,7 +26,7 @@ type Measure struct {
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
-	defer profile.Start(profile.TraceProfile, profile.ProfilePath(".")).Stop()
+	defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	file, err := os.Open("./measures.txt")
 	if err != nil {
 		panic("file doesn't exist")
@@ -43,11 +43,13 @@ func main() {
 		mk += MAXROWS
 	}
 	wg.Wait()
-	fmt.Println(measureMap)
-	// for key, measure := range measureMap {
-	// 	measure.meanTemp = measure.sum / float64(measure.count)
-	// 	fmt.Printf("Sensor: %s, Min: %.2f, Max: %.2f, Mean: %.2f\n", key, measure.minTemp, measure.maxTemp, measure.meanTemp)
-	// }
+	measureMap.Range(func(key any, value any) bool {
+		fmt.Println(key, " : ", value)
+		// measure := value.(Measure)
+		// measure.meanTemp = measure.sum / float64(measure.count)
+		// fmt.Printf("Sensor: %s, Min: %.2f, Max: %.2f, Mean: %.2f\n", key, measure.minTemp, measure.maxTemp, measure.meanTemp)
+		return true
+	})
 }
 
 func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
@@ -93,18 +95,4 @@ func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 
 		maxReach--
 	}
-}
-
-func max(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
 }
