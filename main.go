@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -73,7 +72,7 @@ func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 		if len(parts) < 2 {
 			continue
 		}
-		value, err := strconv.ParseFloat(parts[1], 64)
+		value := toNumber([]byte(parts[1]))
 		if err != nil {
 			continue
 		}
@@ -95,4 +94,26 @@ func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 
 		maxReach--
 	}
+}
+
+func toNumber(data []byte) float64 {
+	negative := data[0] == '-'
+	if negative {
+		data = data[1:]
+	}
+
+	var result float64
+	switch len(data) {
+	// 1.2
+	case 3:
+		result = float64(data[0])*10 + float64(data[2]) - '0'*(10+1)
+	// 12.3
+	case 4:
+		result = float64(data[0])*100 + float64(data[1])*10 + float64(data[3]) - '0'*(100+10+1)
+	}
+
+	if negative {
+		return -result
+	}
+	return result
 }
