@@ -72,6 +72,7 @@ func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 		if len(parts) < 2 {
 			continue
 		}
+
 		value := toNumber([]byte(parts[1]))
 		if err != nil {
 			continue
@@ -86,17 +87,18 @@ func worker(measureMap *sync.Map, seekTo int, f *os.File, wg *sync.WaitGroup) {
 			})
 			continue
 		}
-
 		measure.(*Measure).maxTemp = max(measure.(*Measure).maxTemp, value)
 		measure.(*Measure).minTemp = min(measure.(*Measure).minTemp, value)
 		measure.(*Measure).sum += value
 		measure.(*Measure).count++
-
 		maxReach--
 	}
 }
 
 func toNumber(data []byte) float64 {
+	if len(data) == 0 {
+		return 0
+	}
 	negative := data[0] == '-'
 	if negative {
 		data = data[1:]
